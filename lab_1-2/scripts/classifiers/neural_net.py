@@ -80,10 +80,12 @@ class TwoLayerNet(object):
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        # Скрытый слой: h = ReLU(X * W1 + b1)
-        hidden = np.maximum(0, X.dot(W1) + b1)   # (N, H)
-        # Выходной слой: scores = h * W2 + b2
-        scores = hidden.dot(W2) + b2            # (N, C)
+        # Первый слой: линейное преобразование + ReLU
+        z1 = X.dot(W1) + b1
+        a1 = np.maximum(0, z1)  # ReLU activation
+        
+        # Второй слой: линейное преобразование (выходные оценки)
+        scores = a1.dot(W2) + b2
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -101,18 +103,15 @@ class TwoLayerNet(object):
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        # Softmax (численно устойчивый)
-        shifted = scores - np.max(scores, axis=1, keepdims=True)
-        exp_scores = np.exp(shifted)
+        # Вычисление Softmax
+        exp_scores = np.exp(scores - np.max(scores, axis=1, keepdims=True))
         probs = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
-
-        # Cross-entropy loss
-        correct_log_probs = -np.log(probs[np.arange(N), y])
-        data_loss = np.sum(correct_log_probs) / N
-
-        # L2 regularization
-        reg_loss = 0.5 * reg * (np.sum(W1 * W1) + np.sum(W2 * W2))
-
+        
+        correct_logprobs = -np.log(probs[range(N), y])
+        data_loss = np.sum(correct_logprobs) / N
+        
+        reg_loss = reg * np.sum(W1 * W1) + reg * np.sum(W2 * W2)
+        
         loss = data_loss + reg_loss
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
@@ -126,26 +125,30 @@ class TwoLayerNet(object):
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        # Градиент для выходного слоя
-        dScores = probs
-        dScores[np.arange(N), y] -= 1
-        dScores /= N
+        dscores = probs.copy()
+        dscores[range(N), y] -= 1
+        dscores /= N
 
-        # Градиенты для W2 и b2
-        grads['W2'] = hidden.T.dot(dScores) + reg * W2
-        grads['b2'] = np.sum(dScores, axis=0)
+        dW2 = a1.T.dot(dscores)
+        db2 = np.sum(dscores, axis=0)
+        
+        da1 = dscores.dot(W2.T)
+        
+        dz1 = da1
+        dz1[a1 <= 0] = 0
+        
+        dW1 = X.T.dot(dz1)
+        db1 = np.sum(dz1, axis=0)
 
-        # Градиент для скрытого слоя
-        dHidden = dScores.dot(W2.T)
-        dHidden[hidden <= 0] = 0   # ReLU derivative
+        dW2 += 2 * reg * W2
+        dW1 += 2 * reg * W1
 
-        # Градиенты для W1 и b1
-        grads['W1'] = X.T.dot(dHidden) + reg * W1
-        grads['b1'] = np.sum(dHidden, axis=0)
+        grads = {'W1': dW1, 'b1': db1, 'W2': dW2, 'b2': db2}
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
         return loss, grads
+    
 
     def train(self, X, y, X_val, y_val,
               learning_rate=1e-3, learning_rate_decay=0.95,
